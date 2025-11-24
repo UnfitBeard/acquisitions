@@ -1,0 +1,32 @@
+services:
+  # node-js application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: acquisitions-app-prod
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env.production
+    volumes:
+      #  Mount logs directory for prod logging
+      - ./logs:/app/logs
+
+    networks:
+      - acquisitions-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          # Guaranteed minimum resources
+          memory: 256M # E.g., guarantee half the limit
+          cpus: '0.2' # E.g., guarantee less than half the limit
+
+networks:
+  acquisitions-prod:
+    driver: bridge

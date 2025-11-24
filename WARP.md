@@ -31,12 +31,12 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Controllers orchestrate validation and service calls (e.g., src/controllers/auth.controller.js uses zod schemas in src/validations/ and utilities in src/utils/).
   - Services (e.g., src/services/auth.service.js) contain business logic and DB access.
 - Data and persistence
-  - Drizzle ORM with Neon HTTP driver. Configuration in src/config/database.js and drizzle.config.js (models under src/models/*.js).
+  - Drizzle ORM with Neon HTTP driver. Configuration in src/config/database.js and drizzle.config.js (models under src/models/\*.js).
   - Example model: users table in src/models/user.model.js using drizzle-orm/pg-core.
 - Logging
   - Winston logger (src/config/logger.js). Writes to logs/error.log and logs/combined.log; console logging enabled when NODE_ENV !== 'production'. HTTP request logging via morgan -> winston.
 - Module path aliases
-  - package.json imports maps enable aliases like #config/*, #controllers/*, #routes/*, #services/*, #utils/*, #validations/*, #models/*.
+  - package.json imports maps enable aliases like #config/_, #controllers/_, #routes/_, #services/_, #utils/_, #validations/_, #models/\*.
 
 ## Environment
 
