@@ -156,7 +156,7 @@ npm run db:studio
 
 ## Security
 
-- Arcjet config: `./src/config/arcjet.js`
+- Arcjet config file: `./src/config/arcjet.js`
 - MiddleWare config: `./src/app.js` as `app.use(securityMiddleware)`
 
 Arcjet behavior
