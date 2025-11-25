@@ -1,0 +1,67 @@
+name: Lint and Format
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  pull_request:
+    branches:
+      - main
+      - staging
+
+jobs:
+  lint-format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x (with npm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        id: eslint
+        shell: bash
+        run: |
+          # run lint and capture exit code so we can add helpful annotations if it fails
+          set -o pipefail
+          npm run lint
+        # fail naturally on non-zero exit so job fails; subsequent "post" step will not run.
+        # We'll also provide clearer advice below using the failure step.
+
+      - name: Provide ESLint fix suggestion (on failure)
+        if: failure()
+        run: |
+          echo "::error::ESLint reported issues. You can attempt automatic fixes locally with:"
+          echo "::error::  npm run lint:fix"
+          echo "::error::Add/commit fixes and push to retrigger the workflow."
+          # Exit non-zero to keep job failed and produce annotation
+          exit 1
+
+      - name: Run Prettier check
+        id: prettier
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run format:check
+
+      - name: Provide Prettier fix suggestion (on failure)
+        if: failure()
+        run: |
+          echo "::error::Prettier formatting issues detected. To auto-format locally run:"
+          echo "::error::  npm run format"
+          echo "::error::Add/commit changes and push to re-run this workflow."
+          exit 1
+
+      - name: Success message
+        if: success()
+        run: echo "Lint and format checks passed ✅"

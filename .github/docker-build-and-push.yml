@@ -1,0 +1,112 @@
+name: Docker Build and Push (multi-arch)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/$${{ github.event.repository.name }} # replaced at runtime by the shell step below
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Compute image name & prod timestamp
+        id: meta_vars
+        shell: bash
+        run: |
+          # Preferred image name: DOCKER_USERNAME/<repo-name>
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          IMAGE="${DOCKER_USERNAME:-${{ secrets.DOCKER_USERNAME }}}/${REPO_NAME}"
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+
+          # timestamp for prod tag in format prod-YYYYMMDD-HHmmss (UTC)
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+          PROD_TAG="prod-${TIMESTAMP}"
+          echo "prod_tag=${PROD_TAG}" >> $GITHUB_OUTPUT
+
+          # derive branch & sha tags
+          REF_NAME="${GITHUB_REF##*/}"
+          SHA_TAG="${GITHUB_SHA::7}"
+          echo "ref=${REF_NAME}" >> $GITHUB_OUTPUT
+          echo "sha=${SHA_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata (tags, labels) via docker/metadata-action
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.meta_vars.outputs.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+            # We'll also ask to include 'latest' when pushing from main
+        # This action produces step outputs `meta.outputs.tags` and `meta.outputs.labels`
+
+      - name: Assemble final tags list
+        id: tags
+        shell: bash
+        run: |
+          IMAGE=${{ steps.meta_vars.outputs.image }}
+          # Tags from metadata-action (space/comma separated depending on action): normalize
+          META_TAGS="${{ steps.meta.outputs.tags }}"
+          # ensure we include 'latest' when on main
+          EXTRA_TAGS=""
+          if [ "${GITHUB_REF##*/}" = "main" ]; then
+            EXTRA_TAGS="latest"
+          fi
+          # add prod timestamp tag and shortened sha
+          EXTRA_TAGS="${EXTRA_TAGS},${{ steps.meta_vars.outputs.prod_tag }},${{ steps.meta_vars.outputs.sha }}"
+          # Build final CSV list
+          # combine, remove duplicates and trim
+          ALL_TAGS=$(echo "${META_TAGS},${EXTRA_TAGS}" | tr ',' '\n' | awk '{$1=$1};1' | awk '!seen[$0]++' | paste -sd ',' -)
+          echo "final_tags=${ALL_TAGS}" >> $GITHUB_OUTPUT
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+
+      - name: Build and push (multi-platform) with Buildx cache
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.final_tags }}
+          # Use registry cache for speed (requires write permission)
+          cache-from: type=registry,ref=${{ steps.tags.outputs.image }}:cache
+          cache-to: type=registry,ref=${{ steps.tags.outputs.image }}:cache,mode=max
+
+      - name: Write GitHub summary with published images & tags
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const image = process.env.IMAGE || '${{ steps.tags.outputs.image }}';
+            const tags = '${{ steps.tags.outputs.final_tags }}'.split(',').map(t => t.trim()).filter(Boolean);
+            let out = `## Docker images published\n\nImage: \`${image}\`\n\n**Tags published (${tags.length})**\n`;
+            for (const t of tags) {
+              out += `- \`${image}:${t}\`\n`;
+            }
+            out += `\n> Built for platforms: linux/amd64, linux/arm64\n`;
+            core.summary.addRaw(out);
+        env:
+          IMAGE: ${{ steps.tags.outputs.image }}

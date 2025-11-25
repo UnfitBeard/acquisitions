@@ -4,6 +4,7 @@ const aj = arcjet({
   // Get your site key from https://app.arcjet.com and set it as an environment
   // variable rather than hard coding.
   key: process.env.ARCJET_KEY,
+  env: 'development',
   rules: [
     // Shield protects your app from common attacks e.g. SQL injection
     shield({ mode: 'LIVE' }),
@@ -23,7 +24,7 @@ const aj = arcjet({
     slidingWindow({
       mode: 'LIVE',
       interval: '1m',
-      max: 5,
+      max: 15,
     }),
   ],
 });
