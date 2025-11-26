@@ -5,11 +5,6 @@ on:
     branches: ['main']
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
-  id-token: write
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -27,89 +22,34 @@ jobs:
       - name: Docker Hub login
         uses: docker/login-action@v2
         with:
-          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Compute image variables (lowercased)
+      - name: Compute image and tags
         id: vars
         shell: bash
         run: |
-          USER_LOWER=$(echo "${{ secrets.DOCKER_USERNAME }}" | tr '[:upper:]' '[:lower:]')
-          REPO_NAME=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')
-
-          IMAGE="${USER_LOWER}/${REPO_NAME}"
+          IMAGE="${{ secrets.DOCKER_USERNAME | lower }}/acquisitions"
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
 
-          # Branch + SHA
-          BRANCH=$(echo "${GITHUB_REF##*/}" | tr '[:upper:]' '[:lower:]')
           SHA_TAG="${GITHUB_SHA::7}"
-
-          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
-          echo "sha=${SHA_TAG}" >> $GITHUB_OUTPUT
-
-          # Timestamp prod tag (UTC)
           PROD_TAG="prod-$(date -u +'%Y%m%d-%H%M%S')"
+          echo "sha=${SHA_TAG}" >> $GITHUB_OUTPUT
           echo "prod=${PROD_TAG}" >> $GITHUB_OUTPUT
 
-      - name: Extract metadata (tags/labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.vars.outputs.image }}
-          tags: |
-            type=ref,event=branch
-            type=sha
-            # 'latest' auto-added on main below
-
-      - name: Build final tag list
-        id: tags
-        shell: bash
-        run: |
-          IMAGE="${{ steps.vars.outputs.image }}"
-          META_TAGS="${{ steps.meta.outputs.tags }}"
-
-          EXTRA_TAGS=""
-          # add 'latest' on main
-          if [ "${{ steps.vars.outputs.branch }}" = "main" ]; then
-            EXTRA_TAGS="latest"
-          fi
-
-          # add prod tag + short sha
-          EXTRA_TAGS="${EXTRA_TAGS},${{ steps.vars.outputs.prod }},${{ steps.vars.outputs.sha }}"
-
-          # merge + dedupe
-          ALL_TAGS=$(echo "${META_TAGS},${EXTRA_TAGS}" | tr ',' '\n' | awk '{$1=$1};1' | awk '!seen[$0]++' | paste -sd ',' -)
-
-          echo "final=${ALL_TAGS}" >> $GITHUB_OUTPUT
-          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
-
-      - name: Build and push multi-platform image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.final }}
-          cache-from: type=registry,ref=${{ steps.tags.outputs.image }}:cache
-          cache-to: type=registry,ref=${{ steps.tags.outputs.image }}:cache,mode=max
+          tags: |
+            ${{ steps.vars.outputs.image }}:latest
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.sha }}
+            ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.prod }}
 
       - name: Summary
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const image = '${{ steps.tags.outputs.image }}';
-            const tags = '${{ steps.tags.outputs.final }}'
-              .split(',')
-              .map(t => t.trim())
-              .filter(Boolean);
-
-            let out = `## Docker Image Published\n`;
-            out += `**Image:** \`${image}\`\n\n`;
-            out += `### Tags (${tags.length})\n`;
-
-            for (const t of tags) out += `- \`${image}:${t}\`\n`;
-            out += `\nTarget platforms: **linux/amd64**, **linux/arm64**\n`;
-
-            core.summary.addRaw(out);
+        run: |
+          echo "Docker image pushed: ${{ steps.vars.outputs.image }}"
+          echo "Tags: latest, ${{ steps.vars.outputs.sha }}, ${{ steps.vars.outputs.prod }}"
