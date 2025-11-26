@@ -91,7 +91,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.final_tags }}
+          tags: ${{ steps.tags.outputs.final_tags }}
           # Use registry cache for speed (requires write permission)
           cache-from: type=registry,ref=${{ steps.tags.outputs.image }}:cache
           cache-to: type=registry,ref=${{ steps.tags.outputs.image }}:cache,mode=max
