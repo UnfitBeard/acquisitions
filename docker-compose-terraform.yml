@@ -1,0 +1,13 @@
+services:
+  terraform:
+    image: hashicorp/terraform:latest
+    user: '${UID:-1000}:${GID:-1000}'
+    volumes:
+      - ./:/workspace
+      - ~/.aws:/root/.aws:ro
+      - ~/.terraform-docker/cache:/root/.terraform.d/plugin-cache
+    working_dir: /workspace
+    env_file:
+      - .env
+    tty: true
+    entrypoint: ['tail', '-f', '/dev/null']
